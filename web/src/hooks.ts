@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { collection, doc, onSnapshot, type Timestamp } from "firebase/firestore";
-import type { Answers, OpenedEntry } from "../../shared/game";
+import type { Answers, Game, OpenedEntry } from "../../shared/game";
 import { auth, db } from "./firebase";
 
-export type EventDoc = { name: string; status: "playing" | "finished" };
+export type EventDoc = { name: string; status: "playing" | "finished"; game?: Game };
 export type Player = {
   id: string;
   nickname: string;

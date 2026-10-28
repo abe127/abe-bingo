@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CELLS_BY_ID, PLAYABLE_CELLS, QUESTIONS, QUESTIONS_BY_ID, countLines } from "../../../shared/game";
+import { PLAYABLE_CELLS, choicesOf, countLines, gameOf, indexOf, type Game } from "../../../shared/game";
 import { Brand, Notice } from "../App";
 import { Board } from "../components/Board";
 import { QrCode } from "../components/QrCode";
@@ -19,6 +19,7 @@ export function Play({ uid, meetCode }: { uid: string; meetCode: string | null }
   const [tab, setTab] = useState<Tab>("card");
 
   const me = players.data.find((p) => p.id === uid);
+  const game = useMemo(() => gameOf(event.data), [event.data]);
   const nicknames = useMemo(() => Object.fromEntries(players.data.map((p) => [p.id, p.nickname])), [players.data]);
 
   if (event.loading || priv.loading) return <Notice title="読み込み中…" body="参加者の情報を取得しています" />;
@@ -32,7 +33,7 @@ export function Play({ uid, meetCode }: { uid: string; meetCode: string | null }
       <Brand sub={event.data.name} />
       {finished && <div className="banner-note">このイベントは終了しました。結果は「みんな」で見られます。</div>}
       {!joined ? (
-        finished ? null : <JoinForm />
+        finished ? null : <JoinForm game={game} />
       ) : (
         <>
           <nav className="tabs" role="tablist">
@@ -49,7 +50,7 @@ export function Play({ uid, meetCode }: { uid: string; meetCode: string | null }
             ))}
           </nav>
           {tab === "card" && (
-            <CardView me={me} code={priv.data!.code} nicknames={nicknames} meetCode={meetCode} finished={finished} />
+            <CardView game={game} me={me} code={priv.data!.code} nicknames={nicknames} meetCode={meetCode} finished={finished} />
           )}
           {tab === "all" && <AllView players={players.data} uid={uid} />}
           {tab === "rules" && <RulesView />}
@@ -62,7 +63,7 @@ export function Play({ uid, meetCode }: { uid: string; meetCode: string | null }
 /* ---------- 参加登録 ---------- */
 const DRAFT_KEY = `kb-draft-${eventId}`;
 
-function JoinForm() {
+function JoinForm({ game }: { game: Game }) {
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     try {
       return JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "{}");
@@ -84,14 +85,19 @@ function JoinForm() {
       /* 保存できなくても続行 */
     }
   };
-  const answered = QUESTIONS.filter((q) => answers[q.id]).length;
-  const ready = answered === QUESTIONS.length && nickname.trim() && passphrase.trim();
+  const questions = game.questions;
+  // 主催者が質問を変えた場合に備え、今の質問と選択肢に合う回答だけを数える
+  const valid = Object.fromEntries(
+    questions.filter((q) => choicesOf(q).includes(answers[q.id])).map((q) => [q.id, answers[q.id]]),
+  );
+  const answered = Object.keys(valid).length;
+  const ready = answered === questions.length && nickname.trim() && passphrase.trim();
 
   const submit = async () => {
     setBusy(true);
     setError(null);
     try {
-      await api.join({ eventId, nickname: nickname.trim(), passphrase, answers });
+      await api.join({ eventId, nickname: nickname.trim(), passphrase, answers: valid });
       try {
         localStorage.removeItem(DRAFT_KEY);
       } catch {
@@ -122,14 +128,14 @@ function JoinForm() {
         </label>
       </section>
       <section className="panel">
-        {QUESTIONS.map((q, i) => (
+        {questions.map((q, i) => (
           <div className="q" key={q.id}>
             <h3>
               <span className="n">{String(i + 1).padStart(2, "0")}</span>
               {q.label}
             </h3>
             <div className="chips">
-              {q.options.map((o) => (
+              {choicesOf(q).map((o) => (
                 <button key={o} className="chip" aria-pressed={answers[q.id] === o} onClick={() => pick(q.id, o)}>
                   {o}
                 </button>
@@ -141,10 +147,10 @@ function JoinForm() {
       {error && <p className="err">{error}</p>}
       <div className="progress">
         <div className="count">
-          {answered} / {QUESTIONS.length}
+          {answered} / {questions.length}
         </div>
         <div className="bar">
-          <i style={{ width: `${(answered / QUESTIONS.length) * 100}%` }} />
+          <i style={{ width: `${(answered / questions.length) * 100}%` }} />
         </div>
         <button className="btn" disabled={!ready || busy} onClick={submit}>
           {busy ? "作成中…" : "カードを作る"}
@@ -163,13 +169,14 @@ type SheetState =
   | null;
 
 function CardView(props: {
+  game: Game;
   me: Player | undefined;
   code: string;
   nicknames: Record<string, string>;
   meetCode: string | null;
   finished: boolean;
 }) {
-  const { me, code, nicknames, meetCode, finished } = props;
+  const { game, me, code, nicknames, meetCode, finished } = props;
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -241,6 +248,7 @@ function CardView(props: {
       {lines > 0 && <div className="bingo-banner">BINGO{lines > 1 ? ` ×${lines}` : ""}！</div>}
 
       <Board
+        game={game}
         card={me.card}
         opened={me.opened}
         nicknames={nicknames}
@@ -308,7 +316,7 @@ function CardView(props: {
               </button>
             </>
           )}
-          {sheet.kind === "cell" && <CellSheet me={me} index={sheet.index} nicknames={nicknames} onClose={closeSheet} />}
+          {sheet.kind === "cell" && <CellSheet game={game} me={me} index={sheet.index} nicknames={nicknames} onClose={closeSheet} />}
         </Sheet>
       )}
     </>
@@ -367,17 +375,21 @@ function PreviewSheet({
 }
 
 function CellSheet({
+  game,
   me,
   index,
   nicknames,
   onClose,
 }: {
+  game: Game;
   me: Player;
   index: number;
   nicknames: Record<string, string>;
   onClose: () => void;
 }) {
-  const cell = CELLS_BY_ID[me.card[index]];
+  const { cells, questions } = indexOf(game);
+  const cell = cells[me.card[index]];
+  if (!cell) return null;
   const o = me.opened[String(index)];
   return (
     <>
@@ -387,7 +399,7 @@ function CellSheet({
           <div className="hint">
             {o.detail}
             <br />
-            <span className="small">{QUESTIONS_BY_ID[cell.q].hint}</span>
+            <span className="small">{questions[cell.q]?.hint}</span>
           </div>
         </>
       ) : (

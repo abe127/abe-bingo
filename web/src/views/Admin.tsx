@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { gameOf, type Game } from "../../../shared/game";
 import { Brand, Notice } from "../App";
+import { GameEditor } from "../components/GameEditor";
 import { api, errorMessage, eventId } from "../firebase";
 import { useEventDoc, usePlayers } from "../hooks";
 import { AllView } from "./Play";
@@ -24,6 +26,14 @@ export function Admin() {
 
   if (event.loading) return <Notice title="読み込み中…" body="" />;
   if (!event.data) return <Notice title="このイベントは見つかりません" body="URLを確かめてください。" />;
+
+  const saveGame = async (game: Game) => {
+    try {
+      await api.admin({ eventId, adminKey: key, action: "saveGame", game });
+    } catch (e) {
+      throw new Error(errorMessage(e));
+    }
+  };
 
   const run = async (action: "check" | "start" | "finish" | "reset", done: string) => {
     setBusy(true);
@@ -106,6 +116,7 @@ export function Admin() {
           {message && <p className="small">{message}</p>}
         </section>
       )}
+      {authed && <GameEditor game={gameOf(event.data)} locked={players.data.length > 0} onSave={saveGame} />}
       <AllView players={players.data} />
     </div>
   );

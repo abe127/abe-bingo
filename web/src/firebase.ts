@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase/app";
+import type { Game } from "../../shared/game";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
@@ -52,9 +53,10 @@ export const api = {
   ),
   preview: call<{ eventId: string; code: string }, Preview>("previewPartner"),
   open: call<{ eventId: string; code: string; index: number }, OpenResult>("openCell"),
-  admin: call<{ eventId: string; adminKey: string; action: "check" | "start" | "finish" | "reset" }, { ok: true }>(
-    "adminAction",
-  ),
+  admin: call<
+    { eventId: string; adminKey: string; action: "check" | "start" | "finish" | "reset" | "saveGame"; game?: Game },
+    { ok: true }
+  >("adminAction"),
 };
 
 /** Functions のエラーから、そのまま見せられる日本語メッセージを取り出す */

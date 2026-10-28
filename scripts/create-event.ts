@@ -9,9 +9,11 @@
  *   GCLOUD_PROJECT=<プロジェクトID> npx tsx scripts/create-event.ts --id ...
  */
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { DEFAULT_GAME, validateGame } from "../shared/game";
 
 const { values } = parseArgs({
   options: {
@@ -19,6 +21,7 @@ const { values } = parseArgs({
     name: { type: "string" },
     passphrase: { type: "string" },
     "admin-key": { type: "string" },
+    game: { type: "string" },
   },
 });
 
@@ -31,14 +34,33 @@ if (!values.name || !values.passphrase) {
   console.error("--name と --passphrase は必須です");
   process.exit(1);
 }
+let game = DEFAULT_GAME;
+if (values.game) {
+  const result = validateGame(JSON.parse(readFileSync(values.game, "utf8")));
+  if (!result.game) {
+    console.error("質問の設定に問題があります:\n- " + result.errors.join("\n- "));
+    process.exit(1);
+  }
+  game = result.game;
+}
 const adminKey = values["admin-key"] ?? randomBytes(9).toString("base64url");
 const sha256 = (s: string) => createHash("sha256").update(s.trim(), "utf8").digest("hex");
 
 initializeApp({ projectId: process.env.GCLOUD_PROJECT });
 const db = getFirestore();
 
+const existing = await db.doc(`events/${id}`).get();
+const hasPlayers = !(await db.collection(`events/${id}/players`).limit(1).get()).empty;
+if (values.game && hasPlayers) console.warn("参加者がいるため、質問の設定は変更しませんでした（主催者画面でデータを削除してから再実行してください）");
+
 await db.doc(`events/${id}`).set(
-  { name: values.name, status: "playing", createdAt: FieldValue.serverTimestamp() },
+  {
+    name: values.name,
+    status: "playing",
+    ...(existing.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    // 参加者がいるイベントの質問は変えない（カードと食い違うため）
+    ...(values.game || !existing.exists ? (hasPlayers ? {} : { game }) : {}),
+  },
   { merge: true },
 );
 await db.doc(`events/${id}/secret/config`).set({

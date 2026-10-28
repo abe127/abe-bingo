@@ -8,8 +8,9 @@
 import { parseArgs } from "node:util";
 import { initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, signInAnonymously } from "firebase/auth";
+import { connectFirestoreEmulator, doc, getDoc, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
-import { QUESTIONS } from "../shared/game";
+import { gameOf, type Game } from "../shared/game";
 
 const { values } = parseArgs({
   options: {
@@ -23,6 +24,24 @@ const N = Number(values.players);
 const ROUNDS = Number(values.rounds);
 const eventId = values.event!;
 
+/** イベントに設定された質問を読む（主催者画面で編集したものがあればそれ） */
+async function loadGame(): Promise<Game> {
+  const app = initializeApp({ apiKey: "demo-key", projectId: "demo-kyotsuten-bingo", appId: "demo" }, "probe");
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  const fs = getFirestore(app);
+  connectFirestoreEmulator(fs, "127.0.0.1", 8080);
+  await signInAnonymously(auth);
+  const snap = await getDoc(doc(fs, "events", eventId));
+  if (!snap.exists()) {
+    console.error(`イベント ${eventId} がありません。先に npm run seed:emu を実行してください`);
+    process.exit(1);
+  }
+  return gameOf(snap.data() as { game?: Game });
+}
+const game = await loadGame();
+const randomChoice = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
 type Preview = { partner: { uid: string }; alreadyUsed: unknown; candidates: { index: number }[] };
 
 async function makeBot(i: number) {
@@ -33,7 +52,7 @@ async function makeBot(i: number) {
   connectFunctionsEmulator(fns, "127.0.0.1", 5001);
   await signInAnonymously(auth);
   const call = <T>(name: string, data: unknown) => httpsCallable<unknown, T>(fns, name)(data).then((r) => r.data);
-  const answers = Object.fromEntries(QUESTIONS.map((q) => [q.id, q.options[Math.floor(Math.random() * q.options.length)]]));
+  const answers = Object.fromEntries(game.questions.map((q) => [q.id, randomChoice(q.options)]));
   const { code } = await call<{ code: string }>("joinEvent", { eventId, nickname: `ボット${i + 1}`, passphrase: values.passphrase, answers });
   return { i, code, call, met: new Set<string>(), opened: 0 };
 }
@@ -59,7 +78,7 @@ const expectReject = async (label: string, p: Promise<unknown>, code: string) =>
 await expectReject("自分のコードで照合", a.call("previewPartner", { eventId, code: a.code }), "invalid-argument");
 await expectReject("存在しないコード", a.call("openCell", { eventId, code: "0000", index: 0 }), "not-found");
 await expectReject("中央マスを開ける", a.call("openCell", { eventId, code: b.code, index: 12 }), "invalid-argument");
-const anyAnswers = Object.fromEntries(QUESTIONS.map((q) => [q.id, q.options[0]]));
+const anyAnswers = Object.fromEntries(game.questions.map((q) => [q.id, q.options[0]]));
 await expectReject("合言葉違いで参加", a.call("joinEvent", { eventId, nickname: "x", passphrase: "ちがう", answers: anyAnswers }), "permission-denied");
 await expectReject("回答が欠けた参加", a.call("joinEvent", { eventId, nickname: "x", passphrase: values.passphrase, answers: {} }), "invalid-argument");
 

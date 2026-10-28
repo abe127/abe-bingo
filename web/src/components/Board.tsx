@@ -1,6 +1,7 @@
-import { CELLS_BY_ID, FREE, lineCells, type OpenedEntry } from "../../../shared/game";
+import { FREE, indexOf, lineCells, type Game, type OpenedEntry } from "../../../shared/game";
 
 type Props = {
+  game: Game;
   card: string[];
   opened: Record<string, OpenedEntry>;
   nicknames: Record<string, string>;
@@ -8,7 +9,8 @@ type Props = {
   onCell: (index: number) => void;
 };
 
-export function Board({ card, opened, nicknames, justOpened, onCell }: Props) {
+export function Board({ game, card, opened, nicknames, justOpened, onCell }: Props) {
+  const cells = indexOf(game).cells;
   const winning = lineCells(Object.keys(opened).map(Number));
   return (
     <section className="board" aria-label="ビンゴカード">
@@ -26,7 +28,7 @@ export function Board({ card, opened, nicknames, justOpened, onCell }: Props) {
             </div>
           );
         const o = opened[String(i)];
-        const label = CELLS_BY_ID[id]?.label ?? "";
+        const label = cells[id]?.label ?? "";
         const name = o ? nicknames[o.by] ?? "参加者" : "";
         return (
           <button

@@ -1,6 +1,6 @@
 # 共通点ビンゴ
 
-社内イベント向けの交流ビンゴ。参加者は20問に答えてカードを作り、話した相手とQRコード（または4けたのコード）を交換すると、二人の共通点に当てはまるマスを1つ開けられる。1人につき開けられるのは1マスだけ。
+社内イベント向けの交流ビンゴ。参加者は主催者が用意した質問に答えてカードを作り、話した相手とQRコード（または4けたのコード）を交換すると、二人の共通点に当てはまるマスを1つ開けられる。1人につき開けられるのは1マスだけ。
 
 ## 構成
 
@@ -14,11 +14,11 @@
 | ゲームロジック | `shared/game.ts`（フロントと関数で共有） |
 
 ```
-shared/game.ts            質問・マス・判定ロジック（質問を変えるならここだけ）
+shared/game.ts            判定ロジック、設定の検証、既定の20問
 functions/src/index.ts    joinEvent / previewPartner / openCell / adminAction
 web/src/views/Play.tsx    参加者画面（登録・カード・みんな・遊び方）
 web/src/views/Screen.tsx  会場スクリーン（#/screen）
-web/src/views/Admin.tsx   主催者画面（#/admin）
+web/src/views/Admin.tsx   主催者画面（#/admin）。質問エディターは components/GameEditor.tsx
 firestore.rules           ブラウザは読むだけ。回答とコードは本人のみ
 scripts/                  イベント作成、難易度シミュレーション、エミュレーター試験
 ```
@@ -26,7 +26,7 @@ scripts/                  イベント作成、難易度シミュレーション
 ### データ
 
 ```
-events/{eventId}                 name, status（playing / finished）
+events/{eventId}                 name, status（playing / finished）, game（質問とマスの設定）
 events/{eventId}/players/{uid}   nickname, card, opened, openedCount, lines, bingoAt   … 参加者全員が読める
 events/{eventId}/private/{uid}   answers, code                                       … 本人だけ読める
 events/{eventId}/codes/{code}    uid                                                 … 誰も読めない（関数のみ）
@@ -95,14 +95,22 @@ URL：
 
 ## 質問やマスを変えるとき
 
-`shared/game.ts` の `QUESTIONS` と `CELLS` を編集し、`npm test` と `npm run sim:balance` で確かめる。
+質問はイベント（部屋）ごとに、主催者画面（`#/admin`）の「質問とマス」で編集する。
 
-- `same` マス：回答が同じなら開く
-- `opp` マス：回答が違えば開く（2択の質問にだけ使う）
-- `adj` マス：誕生月が隣り合えば開く
-- カードには `CELLS` から24種類がランダムに並ぶので、`CELLS` は24種類以上必要
+- 質問ごとに、作るマスを3種類から選ぶ
+  - **同じ**：二人の答えが同じなら開く
+  - **違う**：二人の答えが違えば開く（2択の質問のみ）
+  - **となり**：答えが選択肢の並び順でとなりなら開く（3択以上の質問のみ。「最後と最初もとなり扱い」で12月と1月をつなげられる）
+- 「答えない」を選べるようにすると、それを選んだ人はその質問のマスが開かない（答えにくい質問向け）
+- カードにはマスが24種類ランダムに並ぶので、合計24種類以上必要。多いほど人によってカードがばらける
+- **最初の参加者が登録したら編集はロックされる**（すでに配ったカードと食い違うため）。変えるときは「全員のデータを削除」してから
+- 設定は JSON でコピー・貼り付けできる。別の部屋への流用や、難易度の確認に使う：
+  ```bash
+  npm run sim:balance -- --game my-game.json
+  ```
+- イベント作成時に `npm run create-event -- ... --game my-game.json` で最初から設定を入れることもできる。指定しなければ既定の20問
 
-イベント途中で質問やマスを変えると、すでに作られたカードと食い違うので、変更は開催前に行う。
+既定の20問は `shared/game.ts` の `DEFAULT_GAME`。ゲームの判定は `shared/game.ts` にまとまっていて、Web と関数の両方が同じコードを使う。
 
 ## 既知の制約
 
