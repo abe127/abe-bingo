@@ -1,0 +1,27 @@
+{
+  "name": "kyotsuten-bingo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "npm install && npm --prefix web install && npm --prefix functions install",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm --prefix web run typecheck && npm --prefix functions run typecheck",
+    "build": "npm --prefix functions run build && npm --prefix web run build",
+    "emulators": "npm --prefix functions run build && firebase emulators:start --project demo-kyotsuten-bingo",
+    "dev:emu": "VITE_USE_EMULATORS=true VITE_DEFAULT_EVENT_ID=demo npm --prefix web run dev",
+    "seed:emu": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=demo-kyotsuten-bingo tsx scripts/create-event.ts --id demo --name デモイベント --passphrase もみじ --admin-key admin",
+    "sim:balance": "tsx scripts/simulate-balance.ts",
+    "sim:emu": "tsx scripts/simulate-emulator.ts",
+    "create-event": "tsx scripts/create-event.ts",
+    "deploy": "firebase deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "firebase": "^11.0.2",
+    "firebase-admin": "^12.7.0",
+    "firebase-tools": "^13.24.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}

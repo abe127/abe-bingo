@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// 書き込みはすべて Cloud Functions（管理者権限）経由で行う。
+// ブラウザからは読むだけ。回答とコードは本人しか読めない。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /events/{eventId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+
+      // 表示名・カード・開けたマス・ビンゴ数（参加者全員が読める）
+      match /players/{uid} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+
+      // 回答と自分のコード（本人のみ）
+      match /private/{uid} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
+
+      // コードから参加者を引く索引と、合言葉・主催者キーのハッシュ（誰も読めない）
+      match /codes/{code} {
+        allow read, write: if false;
+      }
+      match /secret/{doc} {
+        allow read, write: if false;
+      }
+    }
+  }
+}
